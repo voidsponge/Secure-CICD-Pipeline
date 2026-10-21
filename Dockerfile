@@ -12,7 +12,11 @@ RUN groupadd --system app && useradd --system --gid app --no-create-home app \
 
 WORKDIR /srv
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+# pip, setuptools et ensurepip embarquent leurs propres copies de certifi, urllib3, msgpack…
+# Inutiles à l'exécution, on les retire pour réduire la surface d'attaque (et les CVE remontées par Trivy).
+RUN pip install -r requirements.txt \
+    && pip uninstall -y setuptools wheel pip \
+    && rm -rf /usr/local/lib/python3.13/ensurepip /root/.cache
 COPY app ./app
 
 USER app

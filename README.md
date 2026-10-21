@@ -65,6 +65,13 @@ Un pipeline CI est une cible d'attaque à part entière (voir les compromissions
 - **Timeouts** sur chaque job et `concurrency` pour annuler les runs obsolètes.
 - **Scan hebdomadaire planifié** : une nouvelle CVE peut toucher du code qui n'a pas changé.
 
+### Premier vrai résultat
+
+Dès son premier passage, Trivy a bloqué le pipeline : l'image `python:3.13-slim` contenait
+1 CVE critique et 4 hautes (`certifi`, `urllib3`, `msgpack`, `setuptools`), toutes embarquées
+par `pip` lui-même et jamais utilisées par l'application. Correctif : désinstaller `pip`,
+`setuptools` et `ensurepip` de l'image finale, ce qui réduit aussi la surface d'attaque.
+
 ## L'application
 
 SecureNotes est volontairement simple, mais écrite proprement :

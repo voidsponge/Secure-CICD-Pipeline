@@ -14,9 +14,13 @@ et changer la route pour accepter du texte :
 ```python
 @app.get("/notes/<note_id>")
 def get_note(note_id):
-    row = get_db().execute(
-        f"SELECT id, title, body FROM notes WHERE id = {note_id}"  # VULNÉRABLE
-    ).fetchone()
+    row = (
+        get_db()
+        .execute(
+            f"SELECT id, title, body FROM notes WHERE id = {note_id}"  # VULNÉRABLE
+        )
+        .fetchone()
+    )
 ```
 
 ## 2. Ajouter un faux secret
