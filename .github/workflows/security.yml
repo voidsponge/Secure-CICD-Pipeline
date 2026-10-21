@@ -25,7 +25,7 @@ jobs:
         with:
           fetch-depth: 0 # tout l'historique : un secret supprimé reste dans git
           persist-credentials: false
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,7 +50,7 @@ jobs:
           --sarif --output semgrep.sarif
           --error --severity ERROR
       - if: always()
-        uses: github/codeql-action/upload-sarif@48870fdd6b42ee6474ec4207209ff87609271a5e # v4.39.0
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -95,7 +95,7 @@ jobs:
           $TRIVY_IMAGE image --format sarif --output /out/trivy.sarif
           securenotes:${{ github.sha }}
       - if: always()
-        uses: github/codeql-action/upload-sarif@48870fdd6b42ee6474ec4207209ff87609271a5e # v4.39.0
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: trivy.sarif
           category: trivy
