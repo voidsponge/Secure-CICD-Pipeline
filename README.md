@@ -3,6 +3,7 @@
 [![CI](https://github.com/voidsponge/secure-cicd-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/voidsponge/secure-cicd-pipeline/actions/workflows/ci.yml)
 [![Security](https://github.com/voidsponge/secure-cicd-pipeline/actions/workflows/security.yml/badge.svg)](https://github.com/voidsponge/secure-cicd-pipeline/actions/workflows/security.yml)
 [![CodeQL](https://github.com/voidsponge/secure-cicd-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/voidsponge/secure-cicd-pipeline/actions/workflows/codeql.yml)
+[![Release](https://github.com/voidsponge/secure-cicd-pipeline/actions/workflows/release.yml/badge.svg)](https://github.com/voidsponge/secure-cicd-pipeline/actions/workflows/release.yml)
 
 Un pipeline CI/CD **secure-by-default** autour d'une petite API Flask (SecureNotes).
 Chaque push et chaque pull request passe par une série de contrôles de sécurité automatisés,
@@ -118,11 +119,45 @@ regarder le pipeline la refuser. La marche à suivre est dans [docs/demo.md](doc
 Les workflows signalent les problèmes, mais c'est la protection de branche qui empêche le merge.
 La configuration est décrite dans [docs/branch-protection.md](docs/branch-protection.md).
 
+## Livraison signée et vérifiable
+
+Chaque tag `vX.Y.Z` déclenche le workflow [Release](.github/workflows/release.yml) :
+
+```mermaid
+flowchart LR
+    tag[Tag vX.Y.Z] --> build[Build]
+    build --> scan{Trivy<br/>CVE haute ?}
+    scan -- oui --> stop[Publication refusée]
+    scan -- non --> push[Push GHCR]
+    push --> sign[Signature Cosign<br/>keyless OIDC]
+    sign --> sbom[SBOM CycloneDX<br/>attesté]
+    sbom --> slsa[Provenance SLSA]
+    slsa --> verify[Job de vérification<br/>indépendant]
+```
+
+- **Aucune clé à gérer** : Cosign signe avec un certificat éphémère émis par Sigstore à partir du
+  jeton OIDC de GitHub Actions. La signature est inscrite dans le journal public Rekor.
+- La signature prouve **qui** a construit l'image (ce workflow, sur ce repo, pour ce tag),
+  le SBOM dit **ce qu'elle contient**, la provenance SLSA dit **comment** elle a été construite.
+- Un second job revérifie tout, en n'acceptant que ce workflow comme signataire.
+
+Vérifier une image soi-même :
+
+```bash
+IMAGE=ghcr.io/voidsponge/secure-cicd-pipeline:v1.0.0
+
+cosign verify "$IMAGE" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/voidsponge/Secure-CICD-Pipeline/\.github/workflows/release\.yml@refs/tags/v'
+
+gh attestation verify "oci://$IMAGE" --repo voidsponge/Secure-CICD-Pipeline
+```
+
 ## Pistes d'évolution
 
-- Signature de l'image avec Sigstore Cosign et attestation de provenance SLSA.
-- Publication de l'image sur GHCR uniquement si tous les contrôles passent.
+- Refuser au déploiement toute image non signée (Kyverno ou Sigstore policy-controller).
 - Scan dynamique (DAST) avec OWASP ZAP contre l'app lancée dans le pipeline.
+- Image distroless multi-stage, sans shell ni gestionnaire de paquets.
 
 ## Licence
 
