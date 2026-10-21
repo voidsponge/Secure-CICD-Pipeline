@@ -144,7 +144,7 @@ flowchart LR
 Vérifier une image soi-même :
 
 ```bash
-IMAGE=ghcr.io/voidsponge/secure-cicd-pipeline:v1.0.0
+IMAGE=ghcr.io/voidsponge/secure-cicd-pipeline:v0.1.0
 
 cosign verify "$IMAGE" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
