@@ -1,0 +1,118 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # chaque lundi : détecte les nouvelles CVE sur du code inchangé
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secrets (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tout l'historique : un secret supprimé reste dans git
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    container:
+      image: semgrep/semgrep:1.182.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep
+        run: >
+          semgrep scan
+          --config p/python --config p/flask --config p/owasp-top-ten
+          --config p/secrets --config p/dockerfile --config p/github-actions
+          --sarif --output semgrep.sarif
+          --error --severity ERROR
+      - if: always()
+        uses: github/codeql-action/upload-sarif@48870fdd6b42ee6474ec4207209ff87609271a5e # v4.39.0
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  dependencies:
+    name: Dépendances (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - run: pip install pip-audit==2.10.1
+      - run: pip-audit --strict -r requirements.txt
+
+  container:
+    name: Image Docker (Trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.76.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build de l'image
+        run: docker build -t securenotes:${{ github.sha }} .
+      - name: Trivy, scan de la configuration (Dockerfile, IaC)
+        run: >
+          docker run --rm -v "$PWD:/src" $TRIVY_IMAGE
+          config --exit-code 1 --severity HIGH,CRITICAL /src
+      - name: Trivy, rapport SARIF de l'image
+        if: always()
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out"
+          $TRIVY_IMAGE image --format sarif --output /out/trivy.sarif
+          securenotes:${{ github.sha }}
+      - if: always()
+        uses: github/codeql-action/upload-sarif@48870fdd6b42ee6474ec4207209ff87609271a5e # v4.39.0
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+      - name: Trivy, échec si CVE critique ou haute corrigeable
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $TRIVY_IMAGE
+          image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL
+          securenotes:${{ github.sha }}
+      - name: SBOM CycloneDX
+        if: always()
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out"
+          $TRIVY_IMAGE image --format cyclonedx --output /out/sbom.cdx.json
+          securenotes:${{ github.sha }}
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          if-no-files-found: ignore
